@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // Use local backend with updated CORS
-const API_BASE = "http://192.168.60.97:5000/api/auth";
+const API_BASE = "https://sap-app-maoe.onrender.com/api/auth";
 
 // Create axios instance with CORS configuration
 const apiClient = axios.create({

@@ -113,7 +113,7 @@ function MigoPage({ user, onLogout }) {
 
     try {
       const payload = preparePayload();
-      const endpoint = isTestRun ? 'http://192.168.60.97:5000/api/migo/check' : 'http://192.168.60.97:5000/api/migo/post';
+      const endpoint = isTestRun ? 'https://sap-app-maoe.onrender.com/api/migo/check' : 'https://sap-app-maoe.onrender.com/api/migo/post';
 
       const response = await axios.post(endpoint, payload, {
         headers: getAuthHeader()
