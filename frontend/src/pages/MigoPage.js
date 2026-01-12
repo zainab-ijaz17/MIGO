@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { requestWithFallback } from '../utils/apiHelper';
 
 function MigoPage({ user, onLogout }) {
   const location = useLocation();
@@ -55,9 +56,11 @@ function MigoPage({ user, onLogout }) {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    // Convert all input values to uppercase
+    const upperValue = typeof value === 'string' ? value.toUpperCase() : value;
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: upperValue
     }));
   };
 
@@ -127,10 +130,13 @@ function MigoPage({ user, onLogout }) {
 
     try {
       const payload = preparePayload();
-      const endpoint = isTestRun ? 'http://192.168.60.97:5000/api/migo/check' : 'http://192.168.60.97:5000/api/migo/post';
-
-      const response = await axios.post(endpoint, payload, {
-        headers: getAuthHeader()
+      
+      const response = await requestWithFallback(async (endpoints) => {
+        const endpoint = isTestRun ? endpoints.migo.check : endpoints.migo.post;
+        return await axios.post(endpoint, payload, {
+          headers: getAuthHeader(),
+          timeout: 30000 // 30 second timeout
+        });
       });
 
       if (response.data.success) {
@@ -303,29 +309,34 @@ function MigoPage({ user, onLogout }) {
             </select>
           </div>
 
-          <div className="form-group">
-            <label>Sales Order To</label>
-            <input
-              type="text"
-              name="salesOrderTo"
-              value={formData.salesOrderTo}
-              onChange={handleChange}
-              className="form-control"
-              placeholder="Same as Sales Order From if empty"
-            />
-          </div>
+          {/* Show Sales Order To fields only when movement type is 413 */}
+          {formData.movementType === '413' && (
+            <>
+              <div className="form-group">
+                <label>Sales Order To</label>
+                <input
+                  type="text"
+                  name="salesOrderTo"
+                  value={formData.salesOrderTo}
+                  onChange={handleChange}
+                  className="form-control"
+                  placeholder="Same as Sales Order From if empty"
+                />
+              </div>
 
-          <div className="form-group">
-            <label>Sales Order Item To</label>
-            <input
-              type="text"
-              name="salesOrderItemTo"
-              value={formData.salesOrderItemTo}
-              onChange={handleChange}
-              className="form-control"
-              placeholder="Same as Sales Order Item From if empty"
-            />
-          </div>
+              <div className="form-group">
+                <label>Sales Order Item To</label>
+                <input
+                  type="text"
+                  name="salesOrderItemTo"
+                  value={formData.salesOrderItemTo}
+                  onChange={handleChange}
+                  className="form-control"
+                  placeholder="Same as Sales Order Item From if empty"
+                />
+              </div>
+            </>
+          )}
 
           <div className="form-group">
             <label>Storage Location To</label>

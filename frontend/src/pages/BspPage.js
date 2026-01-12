@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { requestWithFallback } from "../utils/apiHelper";
 
 function BspPage({ user, onLogout }) {
   const navigate = useNavigate();
@@ -67,15 +68,53 @@ function BspPage({ user, onLogout }) {
 
     setLoading(true);
     try {
-      const res = await fetch(`http://192.168.60.97:5000/api/BatchInfo/${input}`);
-      if (!res.ok) throw new Error("Failed to fetch batch information.");
-      const json = await res.json();
+      const json = await requestWithFallback(async (endpoints) => {
+        // Create timeout controller
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        
+        try {
+          const res = await fetch(`${endpoints.batchInfo}/${input}`, {
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            const error = new Error(errorData.error || `Failed to fetch batch information (${res.status})`);
+            error.status = res.status;
+            error.response = { status: res.status, data: errorData };
+            throw error;
+          }
+          
+          return await res.json();
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          if (fetchError.name === 'AbortError') {
+            const timeoutError = new Error('Request timeout');
+            timeoutError.status = 408;
+            timeoutError.response = { status: 408 };
+            throw timeoutError;
+          }
+          throw fetchError;
+        }
+      });
+      
       const d = json?.d || json; // Handle both old and new response formats
       if (!d?.Charg || Number(d.QTY) <= 0) throw new Error("Failed to fetch batch information");
-      setBatches(prev => [...prev, { d: d }]); // Ensure consistent structure
+      setBatches(prev => [...prev, { d: d }]);
       setBatchNumber("");
     } catch (err) {
-      setError(err.message);
+      if (err.status === 408) {
+        setError(err.message || "Request timeout - The server took too long to respond. Please try again.");
+      } else if (err.status === 404) {
+        setError(err.message || "Batch not found");
+      } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        setError("Network error - Unable to connect to the server. Please check your connection and try again.");
+      } else {
+        setError(err.message || "An error occurred while fetching batch information");
+      }
     } finally {
       setLoading(false);
     }
