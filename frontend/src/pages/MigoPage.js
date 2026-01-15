@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { PRIMARY_BACKEND_URL } from '../config/backend';
 
 function MigoPage({ user, onLogout }) {
   const location = useLocation();
@@ -76,9 +75,16 @@ function MigoPage({ user, onLogout }) {
   const preparePayload = () => {
     const nowIso = new Date().toISOString();
 
+    const shouldUseToFields = formData.movementType === '413';
+
     // Use "to" fields if entered, otherwise use "from" fields
-    const finalSalesOrderTo = formData.salesOrderTo || formData.salesOrder;
-    const finalSalesOrderItemTo = formData.salesOrderItemTo || formData.salesOrderItem;
+    // For 311 movement type, always keep "to" equal to "from".
+    const finalSalesOrderTo = shouldUseToFields
+      ? (formData.salesOrderTo || formData.salesOrder)
+      : formData.salesOrder;
+    const finalSalesOrderItemTo = shouldUseToFields
+      ? (formData.salesOrderItemTo || formData.salesOrderItem)
+      : formData.salesOrderItem;
 
     if (Array.isArray(batchData)) {
       const first = batchData[0] || {};
@@ -131,17 +137,15 @@ function MigoPage({ user, onLogout }) {
 
     try {
       const payload = preparePayload();
-      
-      const endpoint = isTestRun
-        ? `${PRIMARY_BACKEND_URL}/api/migo/check`
-        : `${PRIMARY_BACKEND_URL}/api/migo/post`;
+      const endpoint = isTestRun 
+        ? `http://172.16.26.217:5000/api/migo/check`
+        : `http://172.16.26.217:5000/api/migo/post`;
       const response = await axios.post(endpoint, payload, {
         headers: getAuthHeader(),
         timeout: typeof window !== 'undefined' && window.Capacitor ? 60000 : 30000 // 60s for mobile, 30s for web
       });
 
       if (response.data.success) {
-        setTransferResult(response.data.data);
         if (isTestRun) {
           setValidationPassed(true);
           setSuccessMessage('Validation successful!');

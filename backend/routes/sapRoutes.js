@@ -109,8 +109,7 @@ router.get("/BatchInfo/:batchNumber", async (req, res) => {
     if (err.code === 'ECONNABORTED') {
       return res.status(408).json({ 
         error: "Request timeout - SAP server is not responding within 30 seconds", 
-        details: err.message,
-        note: "Render free tier has a 30-second timeout limit. Ensure SAP server whitelists Render outbound IPs (74.220.51.0/24, 74.220.59.0/24) and is accessible from Render's network."
+        details: err.message
       });
     }
     

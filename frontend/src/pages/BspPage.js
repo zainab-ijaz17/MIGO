@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { PRIMARY_BACKEND_URL } from "../config/backend";
 
 function BspPage({ user, onLogout }) {
   const navigate = useNavigate();
@@ -74,8 +73,8 @@ function BspPage({ user, onLogout }) {
 
       let json;
       try {
-        // Use relative URL (no backend server URL in the page)
-        const url = `${PRIMARY_BACKEND_URL}/api/BatchInfo/${input}`;
+        // Use local network URL
+        const url = `http://192.168.60.105:5000/api/BatchInfo/${input}`;
         const res = await fetch(url, {
           signal: controller.signal
         });
