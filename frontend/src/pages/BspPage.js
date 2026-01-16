@@ -67,66 +67,15 @@ function BspPage({ user, onLogout }) {
 
     setLoading(true);
     try {
-      // Create timeout controller
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
-      let json;
-      try {
-        // Use local network URL
-        const url = `http://192.168.60.105:5000/api/BatchInfo/${input}`;
-        const res = await fetch(url, {
-          signal: controller.signal
-        });
-
-        if (!res.ok) {
-          const errorText = await res.text().catch(() => '');
-          const errorData = (() => {
-            try {
-              return errorText ? JSON.parse(errorText) : {};
-            } catch {
-              return {};
-            }
-          })();
-          const error = new Error(errorData.error || `Failed to fetch batch information (${res.status})`);
-          error.status = res.status;
-          error.response = { status: res.status, data: errorData };
-          throw error;
-        }
-
-        const bodyText = await res.text();
-        try {
-          json = bodyText ? JSON.parse(bodyText) : {};
-        } catch {
-          const preview = bodyText?.slice(0, 140) || '';
-          throw new Error(`Server did not return JSON. Response starts with: ${preview}`);
-        }
-      } catch (fetchError) {
-        if (fetchError.name === 'AbortError') {
-          const timeoutError = new Error('Request timeout');
-          timeoutError.status = 408;
-          timeoutError.response = { status: 408 };
-          throw timeoutError;
-        }
-        throw fetchError;
-      } finally {
-        clearTimeout(timeoutId);
-      }
-      
+      const res = await fetch(`http://192.168.60.105:5000/api/BatchInfo/${input}`);
+      if (!res.ok) throw new Error("Failed to fetch batch information.");
+      const json = await res.json();
       const d = json?.d || json; // Handle both old and new response formats
       if (!d?.Charg || Number(d.QTY) <= 0) throw new Error("Failed to fetch batch information");
-      setBatches(prev => [...prev, { d: d }]);
+      setBatches(prev => [...prev, { d: d }]); // Ensure consistent structure
       setBatchNumber("");
     } catch (err) {
-      if (err.status === 408) {
-        setError(err.message || "Request timeout - The server took too long to respond. Please try again.");
-      } else if (err.status === 404) {
-        setError(err.message || "Batch not found");
-      } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        setError("Network error - Unable to connect to the server. Please check your connection and try again.");
-      } else {
-        setError(err.message || "An error occurred while fetching batch information");
-      }
+      setError(err.message);
     } finally {
       setLoading(false);
     }

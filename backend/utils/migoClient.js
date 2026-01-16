@@ -15,7 +15,7 @@ class MigoClient {
     
     // Use same approach as BSP - direct axios calls
     this.baseUrl = process.env.SAP_BASE_URL;
-    this.servicePath = process.env.MIGO_SERVICE_PATH || '/sap/opu/odata/SAP/ZMIGO_TRANSFER_SRV';
+    this.servicePath = process.env.SAP_SERVICE_PATH;
     
     const username = process.env.SAP_USER;
     const password = process.env.SAP_PASS;

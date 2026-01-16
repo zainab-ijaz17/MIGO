@@ -6,7 +6,6 @@ import axios from 'axios';
 function MigoPage({ user, onLogout }) {
   const location = useLocation();
   const navigate = useNavigate();
-
   const batchData = location.state?.batchData;
 
   const [formData, setFormData] = useState({
@@ -56,11 +55,9 @@ function MigoPage({ user, onLogout }) {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // Convert all input values to uppercase
-    const upperValue = typeof value === 'string' ? value.toUpperCase() : value;
     setFormData(prev => ({
       ...prev,
-      [name]: upperValue
+      [name]: value
     }));
   };
 
@@ -75,16 +72,9 @@ function MigoPage({ user, onLogout }) {
   const preparePayload = () => {
     const nowIso = new Date().toISOString();
 
-    const shouldUseToFields = formData.movementType === '413';
-
     // Use "to" fields if entered, otherwise use "from" fields
-    // For 311 movement type, always keep "to" equal to "from".
-    const finalSalesOrderTo = shouldUseToFields
-      ? (formData.salesOrderTo || formData.salesOrder)
-      : formData.salesOrder;
-    const finalSalesOrderItemTo = shouldUseToFields
-      ? (formData.salesOrderItemTo || formData.salesOrderItem)
-      : formData.salesOrderItem;
+    const finalSalesOrderTo = formData.salesOrderTo || formData.salesOrder;
+    const finalSalesOrderItemTo = formData.salesOrderItemTo || formData.salesOrderItem;
 
     if (Array.isArray(batchData)) {
       const first = batchData[0] || {};
@@ -137,15 +127,14 @@ function MigoPage({ user, onLogout }) {
 
     try {
       const payload = preparePayload();
-      const endpoint = isTestRun 
-        ? `http://192.168.60.105:5000/api/migo/check` 
-        : `http://192.168.60.105:5000/api/migo/post`;
+      const endpoint = isTestRun ? 'http://192.168.60.105:5000/api/migo/check' : 'http://192.168.60.105:5000/api/migo/post';
+
       const response = await axios.post(endpoint, payload, {
-        headers: getAuthHeader(),
-        timeout: typeof window !== 'undefined' && window.Capacitor ? 60000 : 30000 // 60s for mobile, 30s for web
+        headers: getAuthHeader()
       });
 
       if (response.data.success) {
+        setTransferResult(response.data.data);
         if (isTestRun) {
           setValidationPassed(true);
           setSuccessMessage('Validation successful!');
@@ -159,18 +148,7 @@ function MigoPage({ user, onLogout }) {
         throw new Error(response.data.error || 'Operation failed');
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.error || error.message;
-      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-        setError('Request timeout. Backend may be slow or unreachable.');
-      } else if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
-        setError(`Network error - Unable to connect to server.
-        Please ensure:
-        1. Backend is running
-        2. Phone and computer are on the same Wi-Fi network
-        3. Windows Firewall allows backend port`);
-      } else {
-        setError(errorMsg);
-      }
+      setError(error.response?.data?.error || error.message);
       if (error.response?.status === 401) {
         navigate('/login');
       }
@@ -284,7 +262,7 @@ function MigoPage({ user, onLogout }) {
           {successMessage && <div style={{ background: "#dcfce7", color: "#166534", padding: "0.75rem", borderRadius: "8px", marginTop: "0.5rem" }}>{successMessage}</div>}
 
           <div className="form-group">
-            <label>Sales Order</label>
+            <label>Sales Order From</label>
             <input
               type="text"
               name="salesOrder"
@@ -298,7 +276,7 @@ function MigoPage({ user, onLogout }) {
           </div>
 
           <div className="form-group">
-            <label>Sales Order Item</label>
+            <label>Sales Order Item From</label>
             <input
               type="text"
               name="salesOrderItem"
@@ -325,7 +303,6 @@ function MigoPage({ user, onLogout }) {
             </select>
           </div>
 
-          {/* Show Sales Order To fields only when movement type is 413 */}
           {formData.movementType === '413' && (
             <>
               <div className="form-group">
