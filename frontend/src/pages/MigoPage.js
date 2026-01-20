@@ -86,7 +86,20 @@ function MigoPage({ user, onLogout }) {
         salesOrderItemTo: finalSalesOrderItemTo,
         docDate: nowIso,
         postingDate: nowIso,
-        items: batchData
+        items: batchData,
+        // Map to expected backend field names
+        salesOrder: firstContent.SalesOrder || formData.salesOrder,
+        salesOrderItem: firstContent.SoItem || formData.salesOrderItem,
+        movementType: formData.movementType,
+        storageLocationTo: formData.storageLocationTo,
+        specialStock: formData.specialStock,
+        MATNR: firstContent.MATNR,
+        Werks: firstContent.Werks,
+        LGORT: firstContent.LGORT,
+        MEINS: firstContent.MEINS,
+        Charg: firstContent.Charg,
+        QTY: firstContent.QTY,
+        SOBKZ: firstContent.SOBKZ
       };
     }
 
@@ -98,13 +111,19 @@ function MigoPage({ user, onLogout }) {
       salesOrderItemTo: finalSalesOrderItemTo,
       docDate: nowIso,
       postingDate: nowIso,
-      Charg: batchContent.Charg,
-      Werks: batchContent.Werks,
+      // Map to expected backend field names
+      salesOrder: batchContent.SalesOrder || formData.salesOrder,
+      salesOrderItem: batchContent.SoItem || formData.salesOrderItem,
+      movementType: formData.movementType,
+      storageLocationTo: formData.storageLocationTo,
+      specialStock: formData.specialStock,
       MATNR: batchContent.MATNR,
+      Werks: batchContent.Werks,
       LGORT: batchContent.LGORT,
       MEINS: batchContent.MEINS,
-      SOBKZ: batchContent.SOBKZ,
-      QTY: batchContent.QTY
+      Charg: batchContent.Charg,
+      QTY: batchContent.QTY,
+      SOBKZ: batchContent.SOBKZ
     };
   };
 
