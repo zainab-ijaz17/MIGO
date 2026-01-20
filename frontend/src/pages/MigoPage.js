@@ -80,12 +80,10 @@ function MigoPage({ user, onLogout }) {
       const first = batchData[0];
       const firstContent = first.d || first;
       return {
-        ...formData,
-        ...firstContent,
-        salesOrderTo: finalSalesOrderTo,
-        salesOrderItemTo: finalSalesOrderItemTo,
-        docDate: nowIso,
-        postingDate: nowIso,
+        HeaderId: "1",
+        DocDate: `/Date(${new Date(nowIso).getTime()})/`,
+        PstngDate: `/Date(${new Date(nowIso).getTime()})/`,
+        TestRun: isTestRun,
         // Use TransferItemSet format for backend compatibility
         TransferItemSet: batchData.map((batch, index) => {
           const batchItem = batch.d || batch;
@@ -113,12 +111,10 @@ function MigoPage({ user, onLogout }) {
 
     const batchContent = batchData.d || batchData;
     return {
-      ...formData,
-      ...batchContent,
-      salesOrderTo: finalSalesOrderTo,
-      salesOrderItemTo: finalSalesOrderItemTo,
-      docDate: nowIso,
-      postingDate: nowIso,
+      HeaderId: "1",
+      DocDate: `/Date(${new Date(nowIso).getTime()})/`,
+      PstngDate: `/Date(${new Date(nowIso).getTime()})/`,
+      TestRun: isTestRun,
       // Use TransferItemSet format for single item
       TransferItemSet: [{
         HeaderId: "1",
