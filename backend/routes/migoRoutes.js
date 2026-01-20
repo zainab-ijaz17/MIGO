@@ -9,6 +9,7 @@ const SAP_API_MGMT_URL = process.env.SAP_API_MGMT_URL;
 const SAP_API_MGMT_MIGO_URL = process.env.SAP_API_MGMT_MIGO_URL;
 const SAP_API_MGMT_MIGO_POST_URL = process.env.SAP_API_MGMT_MIGO_POST_URL;
 const SAP_USER = process.env.SAP_USER;
+const SAP_PASS = process.env.SAP_PASS;
 
 // Direct SAP server configuration (fallback)
 const migoClient = require('../utils/migoClient');
