@@ -7,6 +7,8 @@ const https = require('https');
 
 // SAP API Management gateway configuration
 const SAP_API_MGMT_URL = process.env.SAP_API_MGMT_URL;
+const SAP_API_MGMT_MIGO_URL = process.env.SAP_API_MGMT_MIGO_URL;
+const SAP_API_MGMT_MIGO_POST_URL = process.env.SAP_API_MGMT_MIGO_POST_URL;
 const SAP_USER = process.env.SAP_USER;
 
 // Ignore SSL certificate errors (for dev/self-signed SSL)
@@ -177,7 +179,7 @@ router.get('/gateway/csrf', async (req, res) => {
   }
 
   try {
-    const response = await axios.get(`${SAP_API_MGMT_URL}/bsp/migo/`, {
+    const response = await axios.get(`${SAP_API_MGMT_MIGO_URL}/`, {
       auth: {
         username: SAP_USER,
         password: SAP_PASS
@@ -234,7 +236,7 @@ router.post('/gateway/post', async (req, res) => {
 
     console.log('Posting to SAP API Management gateway:', JSON.stringify(transferData, null, 2));
 
-    const response = await axios.post(`${SAP_API_MGMT_URL}/bsp/migo/TransferHeaderSet`, transferData, {
+    const response = await axios.post(`${SAP_API_MGMT_MIGO_POST_URL}`, transferData, {
       auth: {
         username: SAP_USER,
         password: SAP_PASS

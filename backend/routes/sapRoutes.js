@@ -13,6 +13,7 @@ const BSP_SERVICE_PATH = process.env.BSP_SERVICE_PATH; // e.g., /sap/opu/odata/s
 
 // SAP API Management gateway configuration
 const SAP_API_MGMT_URL = process.env.SAP_API_MGMT_URL; // e.g., https://devspace.test.apimanagement.eu10.hana.ondemand.com
+const SAP_API_MGMT_BATCH_URL = process.env.SAP_API_MGMT_BATCH_URL; // e.g., https://devspace.test.apimanagement.eu10.hana.ondemand.com/bsp/batch
 const SAP_API_MGMT_KEY = process.env.SAP_API_MGMT_KEY; // API key for SAP API Management
 
 // Ignore SSL certificate errors (for dev/self-signed SSL)
@@ -96,7 +97,7 @@ router.get("/BatchInfoGateway/:batchNumber", async (req, res) => {
   console.log(`SAP_API_MGMT_URL: ${SAP_API_MGMT_URL}`);
 
   try {
-    const url = `${SAP_API_MGMT_URL}/bsp/batch/BatchInfoSet?$filter=Charg eq '${batchNumber}'&$format=json`;
+    const url = `${SAP_API_MGMT_BATCH_URL}/BatchInfoSet?$filter=Charg eq '${batchNumber}'&$format=json`;
     console.log(`Full Gateway URL: ${url}`);
 
     const response = await axios.get(url, {
