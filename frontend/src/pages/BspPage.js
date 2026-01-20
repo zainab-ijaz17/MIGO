@@ -68,7 +68,7 @@ function BspPage({ user, onLogout }) {
     setLoading(true);
     try {
       // Use new SAP API Management gateway endpoint
-      const res = await fetch(`http://192.168.60.105:5000/api/BatchInfoGateway/${input}`);
+      const res = await fetch(`https://sap-app-maoe.onrender.com/api/BatchInfoGateway/${input}`);
       if (!res.ok) throw new Error("Failed to fetch batch information.");
       const json = await res.json();
       const d = json?.d || json; // Handle both old and new response formats
