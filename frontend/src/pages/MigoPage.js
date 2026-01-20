@@ -77,7 +77,7 @@ function MigoPage({ user, onLogout }) {
     const finalSalesOrderItemTo = formData.salesOrderItemTo || formData.salesOrderItem;
 
     if (Array.isArray(batchData)) {
-      const first = batchData[0] || {};
+      const first = batchData[0];
       const firstContent = first.d || first;
       return {
         ...formData,
@@ -86,20 +86,28 @@ function MigoPage({ user, onLogout }) {
         salesOrderItemTo: finalSalesOrderItemTo,
         docDate: nowIso,
         postingDate: nowIso,
-        items: batchData,
-        // Map to expected backend field names
-        salesOrder: firstContent.SalesOrder || formData.salesOrder,
-        salesOrderItem: firstContent.SoItem || formData.salesOrderItem,
-        movementType: formData.movementType,
-        storageLocationTo: formData.storageLocationTo,
-        specialStock: formData.specialStock,
-        MATNR: firstContent.MATNR,
-        Werks: firstContent.Werks,
-        LGORT: firstContent.LGORT,
-        MEINS: firstContent.MEINS,
-        Charg: firstContent.Charg,
-        QTY: firstContent.QTY,
-        SOBKZ: firstContent.SOBKZ
+        // Use TransferItemSet format for backend compatibility
+        TransferItemSet: batchData.map((batch, index) => {
+          const batchItem = batch.d || batch;
+          return {
+            HeaderId: "1",
+            ItemNo: String(index + 1).padStart(6, '0'),
+            Material: String(batchItem.MATNR || '').padStart(18, '0'),
+            Plant: batchItem.Werks || '',
+            StgeLoc: batchItem.LGORT || '',
+            Quantity: String(batchItem.QTY || '0'),
+            EntryUom: batchItem.MEINS || '',
+            Batch: batchItem.Charg || '',
+            SalesOrder: firstContent.SalesOrder || formData.salesOrder,
+            SoItem: firstContent.SoItem || formData.salesOrderItem,
+            SpecStock: formData.specialStock || batchItem.SOBKZ || 'E',
+            StgeLocTo: formData.storageLocationTo || '',
+            BatchTo: batchItem.Charg || '',
+            MoveType: formData.movementType,
+            SalesOrderTo: finalSalesOrderTo,
+            SoItemTo: finalSalesOrderItemTo
+          };
+        })
       };
     }
 
@@ -111,19 +119,25 @@ function MigoPage({ user, onLogout }) {
       salesOrderItemTo: finalSalesOrderItemTo,
       docDate: nowIso,
       postingDate: nowIso,
-      // Map to expected backend field names
-      salesOrder: batchContent.SalesOrder || formData.salesOrder,
-      salesOrderItem: batchContent.SoItem || formData.salesOrderItem,
-      movementType: formData.movementType,
-      storageLocationTo: formData.storageLocationTo,
-      specialStock: formData.specialStock,
-      MATNR: batchContent.MATNR,
-      Werks: batchContent.Werks,
-      LGORT: batchContent.LGORT,
-      MEINS: batchContent.MEINS,
-      Charg: batchContent.Charg,
-      QTY: batchContent.QTY,
-      SOBKZ: batchContent.SOBKZ
+      // Use TransferItemSet format for single item
+      TransferItemSet: [{
+        HeaderId: "1",
+        ItemNo: "000001",
+        Material: String(batchContent.MATNR || '').padStart(18, '0'),
+        Plant: batchContent.Werks || '',
+        StgeLoc: batchContent.LGORT || '',
+        Quantity: String(batchContent.QTY || '0'),
+        EntryUom: batchContent.MEINS || '',
+        Batch: batchContent.Charg || '',
+        SalesOrder: batchContent.SalesOrder || formData.salesOrder,
+        SoItem: batchContent.SoItem || formData.salesOrderItem,
+        SpecStock: formData.specialStock || batchContent.SOBKZ || 'E',
+        StgeLocTo: formData.storageLocationTo || '',
+        BatchTo: batchContent.Charg || '',
+        MoveType: formData.movementType,
+        SalesOrderTo: finalSalesOrderTo,
+        SoItemTo: finalSalesOrderItemTo
+      }]
     };
   };
 
