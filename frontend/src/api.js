@@ -24,11 +24,15 @@ export const loginUser = async (username, password, environment) => {
     const result = response.data?.["ns0:Z_WM_HANDHELD_LOGINResponse"];
 
     if (result?.E_TYPE === "S") {
+      const token = btoa(`${username}:${password}`);
+      // Persist credentials for later API calls
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify({ username, environment }));
       return {
         success: true,
         username,
         environment,
-        token: btoa(`${username}:${password}`)  // Changed from Buffer to btoa
+        token
       };
     } else {
       throw new Error(result?.E_MESSAGE || "Authentication failed");
@@ -47,4 +51,20 @@ export const loginUser = async (username, password, environment) => {
                         error.message || 
                         "Authentication failed";
     throw new Error(errorMessage);
-  }}
+  }
+};
+
+// Helper to decode user credentials from token for SAP auth
+export const getUserCredentials = () => {
+  const token = localStorage.getItem('token');
+  if (!token) return null;
+  try {
+    const decoded = atob(token);
+    const [username, password] = decoded.split(':');
+    const userStr = localStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : {};
+    return { username, password, environment: user.environment };
+  } catch {
+    return null;
+  }
+};

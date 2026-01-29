@@ -19,31 +19,66 @@ const BSP_SERVICE_PATH = process.env.BSP_SERVICE_PATH; // e.g., /sap/opu/odata/s
 // Ignore SSL certificate errors (for dev/self-signed SSL)
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
-// GET batch info by batch number
+// OPTIONS preflight for BatchInfo
+router.options("/BatchInfo/:batchNumber", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token, X-User-Auth, X-User-Environment");
+  res.status(200).send();
+});
+
+// GET batch info by batch number (uses per-request user credentials)
 router.get("/BatchInfo/:batchNumber", async (req, res) => {
   const { batchNumber } = req.params;
   if (!batchNumber) return res.status(400).json({ error: "Batch number is required" });
 
-  console.log(`Fetching batch info for: ${batchNumber}`);
+  // Debug: log all incoming headers
+  console.log("Incoming headers:", req.headers);
+
+  // Get user credentials from headers
+  const userAuthHeader = req.headers['x-user-auth'];
+  const userEnvironment = req.headers['x-user-environment'] || 'dev';
+  console.log("X-User-Auth header:", userAuthHeader);
+  console.log("X-User-Environment header:", userEnvironment);
+  if (!userAuthHeader) {
+    console.error("Missing X-User-Auth header");
+    return res.status(401).json({ error: "User credentials required" });
+  }
+
+  // Map environment to numeric SAP client
+  const clientMap = { dev: '110', prd: '300' };
+  const sapClient = clientMap[userEnvironment] || userEnvironment;
+  console.log("Mapped sap-client:", sapClient);
+
+  let username, password;
+  try {
+    const decoded = Buffer.from(userAuthHeader, 'base64').toString();
+    console.log("Decoded auth string:", decoded);
+    [username, password] = decoded.split(':');
+    console.log("Extracted username:", username);
+    if (!username || !password) throw new Error();
+  } catch (e) {
+    console.error("Failed to decode user credentials:", e);
+    return res.status(401).json({ error: "Invalid user credentials" });
+  }
+
+  console.log(`Fetching batch info for: ${batchNumber} (user: ${username})`);
   console.log(`SAP_BASE_URL: ${SAP_BASE_URL}`);
   console.log(`BSP_SERVICE_PATH: ${BSP_SERVICE_PATH}`);
 
   try {
-    const url = `${SAP_BASE_URL}${BSP_SERVICE_PATH}/BatchInfoSet?$filter=Charg eq '${batchNumber}'&$format=json&sap-client=110`;
+    const url = `${SAP_BASE_URL}${BSP_SERVICE_PATH}/BatchInfoSet?$filter=Charg eq '${batchNumber}'&$format=json&sap-client=${sapClient}`;
     console.log(`Full URL: ${url}`);
 
     const response = await axios.get(url, {
       httpsAgent,
-      auth: {
-        username: SAP_USER,
-        password: SAP_PASS
-      }, // Basic Auth
+      auth: { username, password },
       headers: {
         Accept: "application/json",
         "X-Requested-With": "XMLHttpRequest"
       },
-      validateStatus: () => true, // handle status manually
-      timeout: 30000 // 30 second timeout
+      validateStatus: () => true,
+      timeout: 30000
     });
 
     if (response.status === 401) {
@@ -57,13 +92,13 @@ router.get("/BatchInfo/:batchNumber", async (req, res) => {
       });
     }
 
-    // Handle OData filter response - check if we have results
     const batchData = response.data?.d?.results;
     if (!batchData || batchData.length === 0) {
       return res.status(404).json({ error: "Batch not found" });
     }
 
-    // Return the first batch from the filtered results
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token, X-User-Auth, X-User-Environment");
     res.json(batchData[0]);
 
   } catch (err) {

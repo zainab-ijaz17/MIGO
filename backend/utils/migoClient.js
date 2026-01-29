@@ -9,28 +9,31 @@ const httpsAgent = new https.Agent({
 });
 
 class MigoClient {
-  constructor() {
+  constructor(userCredentials = {}) {
     this.csrfToken = null;
     this.cookies = null;
     
-    // Use same approach as BSP - direct axios calls
+    // Use provided per-request credentials or fall back to .env for gateway routes
     this.baseUrl = process.env.SAP_BASE_URL;
     this.servicePath = process.env.SAP_SERVICE_PATH;
     
-    const username = process.env.SAP_USER;
-    const password = process.env.SAP_PASS;
-
+    const { username, password, environment } = userCredentials;
     if (!username || !password) {
-      throw new Error('Missing SAP credentials: set SAP_USER/SAP_PASS in backend/.env');
+      throw new Error('Missing user credentials for SAP OData');
     }
 
     this.auth = {
-      username: username,
-      password: password
+      username,
+      password
     };
+
+    // Map environment to numeric SAP client
+    const clientMap = { dev: '110', prd: '300' };
+    this.sapClient = clientMap[environment] || environment || '110';
+    console.log(`MigoClient initialized with sap-client: ${this.sapClient}`);
     
     this.httpsAgent = new https.Agent({
-      rejectUnauthorized: false, // Only for development
+      rejectUnauthorized: false,
       keepAlive: true
     });
   }
@@ -41,7 +44,7 @@ class MigoClient {
       const response = await axios.get(`${this.baseUrl}${this.servicePath}/TransferHeaderSet`, {
         httpsAgent: this.httpsAgent,
         auth: this.auth,
-        params: { 'sap-client': '110' },
+        params: { 'sap-client': this.sapClient },
         headers: {
           'X-CSRF-Token': 'Fetch',
           'Accept': 'application/json',
@@ -83,11 +86,14 @@ class MigoClient {
 
       const payload = this.formatPayload(transferData, isTestRun);
       console.log('Sending to SAP OData:', JSON.stringify(payload, null, 2));
+      console.log('MoveType in first item:', payload.TransferItemSet?.[0]?.MoveType);
+      console.log('Payload string being sent:', JSON.stringify(payload)); // Log the exact payload string being sent to SAP
+      console.log('Compare with expected structure:'); // Add a note to compare with expected structure
 
       const response = await axios.post(`${this.baseUrl}${this.servicePath}/TransferHeaderSet`, payload, {
         httpsAgent: this.httpsAgent,
         auth: this.auth,
-        params: { 'sap-client': '110' },
+        params: { 'sap-client': this.sapClient },
         headers: {
           'X-CSRF-Token': this.csrfToken,
           'Cookie': this.cookies,
@@ -226,14 +232,14 @@ class MigoClient {
       Quantity: String(item.QTY || item.Quantity || '0'),
       EntryUom: item.MEINS || item.EntryUom || '',
       Batch: item.Charg || item.Batch || '',
-      SalesOrder: salesOrder,
-      SoItem: soItem,
+      SalesOrder: item.SalesOrder || salesOrder, // Prefer item-level, fallback to top-level
+      SoItem: item.SoItem || soItem, // Prefer item-level, fallback to top-level
       SpecStock: specStock,
-      StgeLocTo: stgeLocTo,
+      StgeLocTo: item.StgeLocTo || stgeLocTo, // Prefer item-level, fallback to top-level
       BatchTo: item.Charg || item.Batch || '',
-      MoveType: moveType,
-      SalesOrderTo: salesOrderTo,
-      SoItemTo: soItemTo
+      MoveType: item.MoveType || moveType, // Prefer item-level MoveType, fallback to top-level
+      SalesOrderTo: item.SalesOrderTo || salesOrderTo, // Prefer item-level, fallback to top-level
+      SoItemTo: item.SoItemTo || soItemTo // Prefer item-level, fallback to top-level
     }));
 
     return {
@@ -246,4 +252,4 @@ class MigoClient {
   }
 }
 
-module.exports = new MigoClient();
+module.exports = { MigoClient };

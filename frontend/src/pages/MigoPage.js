@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { getUserCredentials } from '../api';
 
 function MigoPage({ user, onLogout }) {
   const location = useLocation();
@@ -170,67 +171,37 @@ function MigoPage({ user, onLogout }) {
     setSuccessMessage('');
 
     try {
+      const creds = getUserCredentials();
+      if (!creds) throw new Error('User not authenticated. Please log in again.');
+
       const payload = preparePayload(isTestRun);
-      
-      if (isTestRun) {
-        // Use gateway endpoints for test run
-        const csrfResponse = await axios.get('https://sap-app-maoe.onrender.com/api/migo/gateway/csrf', {
-          headers: getAuthHeader()
-        });
-        
-        if (!csrfResponse.data.success) {
-          throw new Error('Failed to get CSRF token');
+      const endpoint = isTestRun ? '/api/migo/check' : '/api/migo/post';
+      const url = `http://192.168.60.107:5000${endpoint}`;
+
+      const response = await axios.post(url, payload, {
+        headers: {
+          'X-User-Auth': btoa(`${creds.username}:${creds.password}`),
+          'X-User-Environment': creds.environment,
+          'Content-Type': 'application/json'
         }
-        
-        const response = await axios.post('https://sap-app-maoe.onrender.com/api/migo/gateway/post', {
-          csrfToken: csrfResponse.data.csrfToken,
-          cookies: csrfResponse.data.cookies,
-          transferData: payload
-        }, {
-          headers: getAuthHeader()
-        });
-        
-        if (response.data.success) {
+      });
+
+      if (response.data.success) {
+        if (isTestRun) {
           setTransferResult(response.data.data);
           setValidationPassed(true);
           setSuccessMessage('Validation successful!');
           setShowSuccessPopup(true);
         } else {
-          throw new Error(response.data.error || 'Validation failed');
+          setPostSuccessData(response.data.data);
+          setShowPostSuccessPopup(true);
         }
       } else {
-        // Use gateway endpoint for actual post
-        const csrfResponse = await axios.get('https://sap-app-maoe.onrender.com/api/migo/gateway/csrf', {
-          headers: getAuthHeader()
-        });
-        
-        if (!csrfResponse.data.success) {
-          throw new Error('Failed to get CSRF token');
-        }
-        
-        const response = await axios.post('https://sap-app-maoe.onrender.com/api/migo/gateway/post', {
-          csrfToken: csrfResponse.data.csrfToken,
-          cookies: csrfResponse.data.cookies,
-          transferData: payload,
-          isTestRun: false
-        }, {
-          headers: getAuthHeader()
-        });
-        
-        if (response.data.success) {
-          setTransferResult(response.data?.data || null);
-          setShowSuccessPopup(false);
-          setPostSuccessData(response.data?.data || null);
-          setShowPostSuccessPopup(true);
-        } else {
-          throw new Error(response.data.error || 'Post failed');
-        }
+        throw new Error(response.data.error || 'Operation failed');
       }
-    } catch (error) {
-      setError(error.response?.data?.error || error.message);
-      if (error.response?.status === 401) {
-        navigate('/login');
-      }
+    } catch (err) {
+      console.error('Transfer error:', err);
+      setError(err.response?.data?.error || err.message || 'Operation failed');
     } finally {
       setLoading(false);
     }

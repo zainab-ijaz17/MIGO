@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const https = require('https');
+const { MigoClient } = require('../utils/migoClient');
 
 // SAP API Management gateway configuration (primary)
 const SAP_API_MGMT_URL = process.env.SAP_API_MGMT_URL;
@@ -11,16 +12,32 @@ const SAP_API_MGMT_MIGO_POST_URL = process.env.SAP_API_MGMT_MIGO_POST_URL;
 const SAP_USER = process.env.SAP_USER;
 const SAP_PASS = process.env.SAP_PASS;
 
-// Direct SAP server configuration (fallback)
-const migoClient = require('../utils/migoClient');
-
 // Ignore SSL certificate errors (for dev/self-signed SSL)
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
+// Helper to extract user credentials from headers
+const getUserFromHeaders = (req) => {
+  const userAuthHeader = req.headers['x-user-auth'];
+  const userEnvironment = req.headers['x-user-environment'] || '110';
+  if (!userAuthHeader) throw new Error('User credentials required');
+
+  let username, password;
+  try {
+    const decoded = Buffer.from(userAuthHeader, 'base64').toString();
+    [username, password] = decoded.split(':');
+    if (!username || !password) throw new Error();
+  } catch {
+    throw new Error('Invalid user credentials');
+  }
+  return { username, password, environment: userEnvironment };
+};
+
 router.get('/metadata', async (req, res) => {
   try {
+    const { username, password, environment } = getUserFromHeaders(req);
+    const migoClient = new MigoClient(username, password, environment);
     const response = await migoClient.client.get('/$metadata', {
-      params: { 'sap-client': '110' },
+      params: { 'sap-client': environment },
       headers: { 'Accept': 'application/xml' },
       responseType: 'text',
       httpsAgent: httpsAgent
@@ -34,7 +51,16 @@ router.get('/metadata', async (req, res) => {
 // Validate transfer (test run)
 router.post('/check', async (req, res) => {
   try {
+    console.log('Raw request body headers:', Object.keys(req.headers));
+    console.log('Raw request body:', req.body);
     console.log('Received check request with body:', JSON.stringify(req.body, null, 2));
+
+    const { username, password, environment } = getUserFromHeaders(req);
+
+    // Use SAP API Management Gateway for MIGO
+    const clientMap = { dev: '110', prd: '300' };
+    const sapClient = clientMap[environment] || environment;
+    console.log('MIGO check - mapped sap-client:', sapClient);
 
     const hasTransferItemSet = Array.isArray(req.body.TransferItemSet) && req.body.TransferItemSet.length > 0;
 
@@ -91,10 +117,64 @@ router.post('/check', async (req, res) => {
       }
     }
 
-    const result = await migoClient.executeTransfer(req.body, true); // true for test run
-    res.json(result);
+    // Fetch CSRF token from SAP API Management Gateway
+    const csrfResponse = await axios.get(`${SAP_API_MGMT_MIGO_URL}/`, {
+      auth: {
+        username,
+        password
+      },
+      headers: {
+        'X-CSRF-Token': 'Fetch',
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      params: { 'sap-client': sapClient },
+      timeout: 30000
+    });
+
+    const csrfToken = csrfResponse.headers['x-csrf-token'];
+    const cookies = Array.isArray(csrfResponse.headers['set-cookie']) 
+      ? csrfResponse.headers['set-cookie'].map(c => c.split(';')[0]).join('; ') 
+      : csrfResponse.headers['set-cookie'];
+
+    if (!csrfToken) {
+      return res.status(400).json({ success: false, error: "No CSRF token returned by SAP API Management" });
+    }
+
+    // Use SAP API Management Gateway with CSRF token
+    const response = await axios.post(`${SAP_API_MGMT_MIGO_POST_URL}`, req.body, {
+      auth: {
+        username,
+        password
+      },
+      headers: {
+        'X-CSRF-Token': csrfToken,
+        'Cookie': cookies,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      params: { 'sap-client': sapClient },
+      timeout: 30000
+    });
+
+    console.log('SAP API Management MIGO check response:', response.data);
+    // Normalize response for frontend
+    const normalized = {
+      success: response.data?.d?.Success === true,
+      message: response.data?.d?.Message || 'Check completed',
+      data: {
+        materialDocument: response.data?.d?.MatDoc || null,
+        documentYear: response.data?.d?.MatDocYear || null,
+        raw: response.data
+      }
+    };
+    res.json(normalized);
   } catch (error) {
     console.error('Check error:', error);
+    if (error.message.includes('User credentials required') || error.message.includes('Invalid user credentials')) {
+      return res.status(401).json({ success: false, error: error.message });
+    }
     res.status(500).json({ 
       success: false, 
       error: error.message 
@@ -107,6 +187,13 @@ router.post('/post', async (req, res) => {
   try {
     console.log('Received post request with body:', JSON.stringify(req.body, null, 2));
 
+    const { username, password, environment } = getUserFromHeaders(req);
+
+    // Use SAP API Management Gateway for MIGO
+    const clientMap = { dev: '110', prd: '300' };
+    const sapClient = clientMap[environment] || environment;
+    console.log('MIGO post - mapped sap-client:', sapClient);
+
     const hasTransferItemSet = Array.isArray(req.body.TransferItemSet) && req.body.TransferItemSet.length > 0;
 
     if (hasTransferItemSet) {
@@ -162,10 +249,64 @@ router.post('/post', async (req, res) => {
       }
     }
 
-    const result = await migoClient.executeTransfer(req.body, false); // false for actual post
-    res.json(result);
+    // Fetch CSRF token from SAP API Management Gateway
+    const csrfResponse = await axios.get(`${SAP_API_MGMT_MIGO_URL}/`, {
+      auth: {
+        username,
+        password
+      },
+      headers: {
+        'X-CSRF-Token': 'Fetch',
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      params: { 'sap-client': sapClient },
+      timeout: 30000
+    });
+
+    const csrfToken = csrfResponse.headers['x-csrf-token'];
+    const cookies = Array.isArray(csrfResponse.headers['set-cookie']) 
+      ? csrfResponse.headers['set-cookie'].map(c => c.split(';')[0]).join('; ') 
+      : csrfResponse.headers['set-cookie'];
+
+    if (!csrfToken) {
+      return res.status(400).json({ success: false, error: "No CSRF token returned by SAP API Management" });
+    }
+
+    // Use SAP API Management Gateway with CSRF token
+    const response = await axios.post(`${SAP_API_MGMT_MIGO_POST_URL}`, req.body, {
+      auth: {
+        username,
+        password
+      },
+      headers: {
+        'X-CSRF-Token': csrfToken,
+        'Cookie': cookies,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      params: { 'sap-client': sapClient },
+      timeout: 30000
+    });
+
+    console.log('SAP API Management MIGO post response:', response.data);
+    // Normalize response for frontend
+    const normalized = {
+      success: response.data?.d?.Success === true,
+      message: response.data?.d?.Message || 'Post completed',
+      data: {
+        materialDocument: response.data?.d?.MatDoc || null,
+        documentYear: response.data?.d?.MatDocYear || null,
+        raw: response.data
+      }
+    };
+    res.json(normalized);
   } catch (error) {
     console.error('Post error:', error);
+    if (error.message.includes('User credentials required') || error.message.includes('Invalid user credentials')) {
+      return res.status(401).json({ success: false, error: error.message });
+    }
     res.status(500).json({ 
       success: false, 
       error: error.message 
@@ -182,10 +323,11 @@ router.get('/gateway/csrf', async (req, res) => {
   }
 
   try {
+    const { username, password, environment } = getUserFromHeaders(req);
     const response = await axios.get(`${SAP_API_MGMT_MIGO_URL}/`, {
       auth: {
-        username: SAP_USER,
-        password: SAP_PASS
+        username,
+        password
       },
       headers: {
         'X-CSRF-Token': 'Fetch',
@@ -228,6 +370,7 @@ router.post('/gateway/post', async (req, res) => {
 
   try {
     const { csrfToken, cookies, transferData, isTestRun = false } = req.body;
+    const { username, password, environment } = getUserFromHeaders(req);
 
     if (!csrfToken) {
       return res.status(400).json({ success: false, error: "CSRF token is required" });
@@ -241,8 +384,8 @@ router.post('/gateway/post', async (req, res) => {
 
     const response = await axios.post(`${SAP_API_MGMT_MIGO_POST_URL}`, transferData, {
       auth: {
-        username: SAP_USER,
-        password: SAP_PASS
+        username,
+        password
       },
       headers: {
         'X-CSRF-Token': csrfToken,

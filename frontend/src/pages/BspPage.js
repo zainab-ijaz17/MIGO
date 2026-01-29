@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { getUserCredentials } from '../api';
 
 function BspPage({ user, onLogout }) {
   const navigate = useNavigate();
@@ -67,8 +68,15 @@ function BspPage({ user, onLogout }) {
 
     setLoading(true);
     try {
-      // Use new SAP API Management gateway endpoint
-      const res = await fetch(`https://sap-app-maoe.onrender.com/api/BatchInfoGateway/${input}`);
+      const creds = getUserCredentials();
+      if (!creds) throw new Error("User not authenticated. Please log in again.");
+
+      const res = await fetch(`http://192.168.60.107:5000/api/BatchInfo/${input}`, {
+        headers: {
+          'X-User-Auth': btoa(`${creds.username}:${creds.password}`),
+          'X-User-Environment': creds.environment
+        }
+      });
       if (!res.ok) throw new Error("Failed to fetch batch information.");
       const json = await res.json();
       const d = json?.d || json; // Handle both old and new response formats
