@@ -72,9 +72,12 @@ function MigoPage({ user, onLogout }) {
   };
 
   const getAuthHeader = () => {
-    const token = localStorage.getItem('token');
+    const creds = getUserCredentials();
+    if (!creds) throw new Error("User not authenticated. Please log in again.");
+    
     return {
-      'Authorization': `Bearer ${token}`,
+      'X-User-Auth': btoa(`${creds.username}:${creds.password}`),
+      'X-User-Environment': creds.environment,
       'Content-Type': 'application/json'
     };
   };
@@ -172,36 +175,88 @@ function MigoPage({ user, onLogout }) {
 
     try {
       const creds = getUserCredentials();
-      if (!creds) throw new Error('User not authenticated. Please log in again.');
+      if (!creds) throw new Error("User not authenticated. Please log in again.");
 
       const payload = preparePayload(isTestRun);
-      const endpoint = isTestRun ? '/api/migo/check' : '/api/migo/post';
-      const url = `http://192.168.60.107:5000${endpoint}`;
-
-      const response = await axios.post(url, payload, {
-        headers: {
-          'X-User-Auth': btoa(`${creds.username}:${creds.password}`),
-          'X-User-Environment': creds.environment,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.data.success) {
-        if (isTestRun) {
-          setTransferResult(response.data.data);
-          setValidationPassed(true);
-          setSuccessMessage('Validation successful!');
-          setShowSuccessPopup(true);
+      
+      // Use different URLs based on environment
+      const baseUrl = creds.environment === '300' || creds.environment === 'prd' 
+        ? 'http://192.168.60.111:5000'
+        : 'https://sap-app.cfapps.eu10-004.hana.ondemand.com';
+      
+      if (creds.environment === '300' || creds.environment === 'prd') {
+        // Use direct backend endpoints for environment 300 (no CSRF)
+        const response = await axios.post(`${baseUrl}/api/migo/post`, payload, {
+          headers: {
+            'X-User-Auth': btoa(`${creds.username}:${creds.password}`),
+            'X-User-Environment': creds.environment,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.data.success) {
+          if (isTestRun) {
+            setTransferResult(response.data.data);
+            setValidationPassed(true);
+            setSuccessMessage('Validation successful!');
+            setShowSuccessPopup(true);
+          } else {
+            setTransferResult(response.data?.data || null);
+            setShowSuccessPopup(false);
+            setPostSuccessData(response.data?.data || null);
+            setShowPostSuccessPopup(true);
+          }
         } else {
-          setPostSuccessData(response.data.data);
-          setShowPostSuccessPopup(true);
+          throw new Error(response.data.error || isTestRun ? 'Validation failed' : 'Post failed');
         }
       } else {
-        throw new Error(response.data.error || 'Operation failed');
+        // Use gateway endpoints for other environments
+        const csrfResponse = await axios.get(`${baseUrl}/api/migo/gateway/csrf`, {
+          headers: {
+            'X-User-Auth': btoa(`${creds.username}:${creds.password}`),
+            'X-User-Environment': creds.environment,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!csrfResponse.data.success) {
+          throw new Error('Failed to get CSRF token');
+        }
+        
+        const response = await axios.post(`${baseUrl}/api/migo/gateway/post`, {
+          csrfToken: csrfResponse.data.csrfToken,
+          cookies: csrfResponse.data.cookies,
+          transferData: payload,
+          isTestRun: isTestRun
+        }, {
+          headers: {
+            'X-User-Auth': btoa(`${creds.username}:${creds.password}`),
+            'X-User-Environment': creds.environment,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.data.success) {
+          if (isTestRun) {
+            setTransferResult(response.data.data);
+            setValidationPassed(true);
+            setSuccessMessage('Validation successful!');
+            setShowSuccessPopup(true);
+          } else {
+            setTransferResult(response.data?.data || null);
+            setShowSuccessPopup(false);
+            setPostSuccessData(response.data?.data || null);
+            setShowPostSuccessPopup(true);
+          }
+        } else {
+          throw new Error(response.data.error || isTestRun ? 'Validation failed' : 'Post failed');
+        }
       }
-    } catch (err) {
-      console.error('Transfer error:', err);
-      setError(err.response?.data?.error || err.message || 'Operation failed');
+    } catch (error) {
+      setError(error.response?.data?.error || error.message);
+      if (error.response?.status === 401) {
+        navigate('/login');
+      }
     } finally {
       setLoading(false);
     }

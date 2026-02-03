@@ -13,7 +13,10 @@ const SAP_API_MGMT_KEY = process.env.SAP_API_MGMT_KEY; // API key for SAP API Ma
 // Direct SAP server configuration (fallback)
 const SAP_USER = process.env.SAP_USER;
 const SAP_PASS = process.env.SAP_PASS;
-const SAP_BASE_URL = process.env.SAP_BASE_URL; // e.g., https://10.200.11.37:44300
+const ENVIRONMENT_BASE_URLS = {
+  dev: process.env.SAP_BASE_URL || "https://10.200.11.37:44300",
+  prd: "https://10.200.10.115:44300"  // Specific URL for environment 300
+};
 const BSP_SERVICE_PATH = process.env.BSP_SERVICE_PATH; // e.g., /sap/opu/odata/sap/ZUM_BSP_BATCH_INFORMATION_SRV
 
 // Ignore SSL certificate errors (for dev/self-signed SSL)
@@ -63,11 +66,12 @@ router.get("/BatchInfo/:batchNumber", async (req, res) => {
   }
 
   console.log(`Fetching batch info for: ${batchNumber} (user: ${username})`);
-  console.log(`SAP_BASE_URL: ${SAP_BASE_URL}`);
+  const baseUrl = ENVIRONMENT_BASE_URLS[userEnvironment] || ENVIRONMENT_BASE_URLS.dev;
+  console.log(`Using base URL for environment ${userEnvironment}: ${baseUrl}`);
   console.log(`BSP_SERVICE_PATH: ${BSP_SERVICE_PATH}`);
 
   try {
-    const url = `${SAP_BASE_URL}${BSP_SERVICE_PATH}/BatchInfoSet?$filter=Charg eq '${batchNumber}'&$format=json&sap-client=${sapClient}`;
+    const url = `${baseUrl}${BSP_SERVICE_PATH}/BatchInfoSet?$filter=Charg eq '${batchNumber}'&$format=json&sap-client=${sapClient}`;
     console.log(`Full URL: ${url}`);
 
     const response = await axios.get(url, {

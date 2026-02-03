@@ -189,7 +189,7 @@ router.post('/post', async (req, res) => {
 
     const { username, password, environment } = getUserFromHeaders(req);
 
-    // Use SAP API Management Gateway for MIGO
+    // Use SAP API Management Gateway for MIGO if available, otherwise use direct connection
     const clientMap = { dev: '110', prd: '300' };
     const sapClient = clientMap[environment] || environment;
     console.log('MIGO post - mapped sap-client:', sapClient);
@@ -249,48 +249,108 @@ router.post('/post', async (req, res) => {
       }
     }
 
-    // Fetch CSRF token from SAP API Management Gateway
-    const csrfResponse = await axios.get(`${SAP_API_MGMT_MIGO_URL}/`, {
-      auth: {
-        username,
-        password
-      },
-      headers: {
-        'X-CSRF-Token': 'Fetch',
-        'Accept': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      },
-      params: { 'sap-client': sapClient },
-      timeout: 30000
-    });
+    let response;
+    
+    // Force direct connection for environment 300 with CSRF, use gateway for others
+    if (environment === '300' || environment === 'prd') {
+      // Use direct SAP connection with MigoClient for environment 300 with CSRF
+      const migoClient = new MigoClient({ username, password, environment });
+      
+      // Get CSRF token first
+      const csrfResponse = await axios.get(`${migoClient.baseUrl}${migoClient.servicePath}/TransferHeaderSet`, {
+        httpsAgent: migoClient.httpsAgent,
+        auth: migoClient.auth,
+        params: { 'sap-client': migoClient.sapClient },
+        headers: {
+          'X-CSRF-Token': 'Fetch',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        validateStatus: () => true
+      });
 
-    const csrfToken = csrfResponse.headers['x-csrf-token'];
-    const cookies = Array.isArray(csrfResponse.headers['set-cookie']) 
-      ? csrfResponse.headers['set-cookie'].map(c => c.split(';')[0]).join('; ') 
-      : csrfResponse.headers['set-cookie'];
+      const csrfToken = csrfResponse.headers['x-csrf-token'];
+      const setCookie = csrfResponse.headers['set-cookie'];
 
-    if (!csrfToken) {
-      return res.status(400).json({ success: false, error: "No CSRF token returned by SAP API Management" });
+      if (!csrfToken) {
+        return res.status(400).json({ success: false, error: "No CSRF token returned by SAP" });
+      }
+
+      const cookies = Array.isArray(setCookie) ? setCookie.map(c => c.split(';')[0]).join('; ') : setCookie;
+
+      // Post with CSRF token
+      response = await axios.post(`${migoClient.baseUrl}${migoClient.servicePath}/TransferHeaderSet`, req.body, {
+        httpsAgent: migoClient.httpsAgent,
+        auth: migoClient.auth,
+        params: { 'sap-client': migoClient.sapClient },
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Cookie': cookies,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        timeout: 30000
+      });
+    } else if (SAP_API_MGMT_URL) {
+      // Use SAP API Management Gateway for other environments
+      const csrfResponse = await axios.get(`${SAP_API_MGMT_MIGO_URL}/`, {
+        auth: {
+          username,
+          password
+        },
+        headers: {
+          'X-CSRF-Token': 'Fetch',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        params: { 'sap-client': sapClient },
+        timeout: 30000
+      });
+
+      const csrfToken = csrfResponse.headers['x-csrf-token'];
+      const cookies = Array.isArray(csrfResponse.headers['set-cookie']) 
+        ? csrfResponse.headers['set-cookie'].map(c => c.split(';')[0]).join('; ') 
+        : csrfResponse.headers['set-cookie'];
+
+      if (!csrfToken) {
+        return res.status(400).json({ success: false, error: "No CSRF token returned by SAP API Management" });
+      }
+
+      // Use SAP API Management Gateway with CSRF token
+      response = await axios.post(`${SAP_API_MGMT_MIGO_POST_URL}`, req.body, {
+        auth: {
+          username,
+          password
+        },
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Cookie': cookies,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        params: { 'sap-client': sapClient },
+        timeout: 30000,
+        responseType: 'json' // Add responseType: 'json' to the axios options
+      });
+    } else {
+      // Fallback to direct connection if no gateway configured
+      const migoClient = new MigoClient({ username, password, environment });
+      response = await axios.post(`${migoClient.baseUrl}${migoClient.servicePath}/TransferHeaderSet`, req.body, {
+        httpsAgent: migoClient.httpsAgent,
+        auth: migoClient.auth,
+        params: { 'sap-client': migoClient.sapClient },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        timeout: 30000
+      });
     }
 
-    // Use SAP API Management Gateway with CSRF token
-    const response = await axios.post(`${SAP_API_MGMT_MIGO_POST_URL}`, req.body, {
-      auth: {
-        username,
-        password
-      },
-      headers: {
-        'X-CSRF-Token': csrfToken,
-        'Cookie': cookies,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      },
-      params: { 'sap-client': sapClient },
-      timeout: 30000
-    });
-
-    console.log('SAP API Management MIGO post response:', response.data);
+    console.log('MIGO post response:', response.data);
     // Normalize response for frontend
     const normalized = {
       success: response.data?.d?.Success === true,

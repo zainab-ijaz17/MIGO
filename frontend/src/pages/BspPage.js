@@ -71,7 +71,17 @@ function BspPage({ user, onLogout }) {
       const creds = getUserCredentials();
       if (!creds) throw new Error("User not authenticated. Please log in again.");
 
-      const res = await fetch(`http://192.168.60.107:5000/api/BatchInfo/${input}`, {
+      // Use different URLs based on environment
+      const baseUrl = creds.environment === '300' || creds.environment === 'prd' 
+        ? 'http://192.168.60.111:5000'
+        : 'https://sap-app.cfapps.eu10-004.hana.ondemand.com';
+      
+      // Use different endpoints based on environment
+      const endpoint = creds.environment === '300' || creds.environment === 'prd'
+        ? `/api/BatchInfo/${input}`  // Direct SAP endpoint for environment 300
+        : `/api/BatchInfoGateway/${input}`;  // Gateway endpoint for other environments
+      
+      const res = await fetch(`${baseUrl}${endpoint}`, {
         headers: {
           'X-User-Auth': btoa(`${creds.username}:${creds.password}`),
           'X-User-Environment': creds.environment
