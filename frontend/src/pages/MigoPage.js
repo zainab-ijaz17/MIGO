@@ -179,78 +179,36 @@ function MigoPage({ user, onLogout }) {
 
       const payload = preparePayload(isTestRun);
       
-      // Use different URLs based on environment
-      const baseUrl = creds.environment === '300' || creds.environment === 'prd' 
-        ? 'http://192.168.60.111:5000'
-        : 'https://sap-app.cfapps.eu10-004.hana.ondemand.com';
+      // Use different URLs based on environment (same as BspPage.js)
+      const isProduction = creds.environment === '300' || creds.environment === 'prd';
+      const baseUrl = isProduction 
+        ? 'http://192.168.60.111:5000'  // Local server for production (300/prd)
+        : 'https://sap-app.cfapps.eu10-004.hana.ondemand.com';  // Default for development (110/dev)
       
-      if (creds.environment === '300' || creds.environment === 'prd') {
-        // Use direct backend endpoints for environment 300 (no CSRF)
-        const response = await axios.post(`${baseUrl}/api/migo/post`, payload, {
-          headers: {
-            'X-User-Auth': btoa(`${creds.username}:${creds.password}`),
-            'X-User-Environment': creds.environment,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (response.data.success) {
-          if (isTestRun) {
-            setTransferResult(response.data.data);
-            setValidationPassed(true);
-            setSuccessMessage('Validation successful!');
-            setShowSuccessPopup(true);
-          } else {
-            setTransferResult(response.data?.data || null);
-            setShowSuccessPopup(false);
-            setPostSuccessData(response.data?.data || null);
-            setShowPostSuccessPopup(true);
-          }
+      // Use unified endpoints - backend handles CSRF tokens internally
+      const endpoint = isTestRun ? '/api/migo/check' : '/api/migo/post';
+      const response = await axios.post(`${baseUrl}${endpoint}`, payload, {
+        headers: {
+          'X-User-Auth': btoa(`${creds.username}:${creds.password}`),
+          'X-User-Environment': creds.environment,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.data.success) {
+        if (isTestRun) {
+          setTransferResult(response.data.data);
+          setValidationPassed(true);
+          setSuccessMessage('Validation successful!');
+          setShowSuccessPopup(true);
         } else {
-          throw new Error(response.data.error || isTestRun ? 'Validation failed' : 'Post failed');
+          setTransferResult(response.data?.data || null);
+          setShowSuccessPopup(false);
+          setPostSuccessData(response.data?.data || null);
+          setShowPostSuccessPopup(true);
         }
       } else {
-        // Use gateway endpoints for other environments
-        const csrfResponse = await axios.get(`${baseUrl}/api/migo/gateway/csrf`, {
-          headers: {
-            'X-User-Auth': btoa(`${creds.username}:${creds.password}`),
-            'X-User-Environment': creds.environment,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (!csrfResponse.data.success) {
-          throw new Error('Failed to get CSRF token');
-        }
-        
-        const response = await axios.post(`${baseUrl}/api/migo/gateway/post`, {
-          csrfToken: csrfResponse.data.csrfToken,
-          cookies: csrfResponse.data.cookies,
-          transferData: payload,
-          isTestRun: isTestRun
-        }, {
-          headers: {
-            'X-User-Auth': btoa(`${creds.username}:${creds.password}`),
-            'X-User-Environment': creds.environment,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (response.data.success) {
-          if (isTestRun) {
-            setTransferResult(response.data.data);
-            setValidationPassed(true);
-            setSuccessMessage('Validation successful!');
-            setShowSuccessPopup(true);
-          } else {
-            setTransferResult(response.data?.data || null);
-            setShowSuccessPopup(false);
-            setPostSuccessData(response.data?.data || null);
-            setShowPostSuccessPopup(true);
-          }
-        } else {
-          throw new Error(response.data.error || isTestRun ? 'Validation failed' : 'Post failed');
-        }
+        throw new Error(response.data.error || isTestRun ? 'Validation failed' : 'Post failed');
       }
     } catch (error) {
       setError(error.response?.data?.error || error.message);
